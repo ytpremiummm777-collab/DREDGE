@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Dredge Fishing Adventure - Standalone</title>
+    <!-- Dependências via CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #000;
+            user-select: none;
+            touch-action: none;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+
+        #game-canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            color: white;
+            z-index: 100;
+        }
+
+        .pointer-events-auto {
+            pointer-events: auto;
+        }
+
+        #joystick-container {
+            position: absolute;
+            bottom: 40px;
+            left: 40px;
+            width: 140px;
+            height: 140px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(8px);
+        }
+
+        #joystick-knob {
+            width: 60px;
+            height: 60px;
+            background: rgba(255, 255, 255, 0.6);
+            border: 2px solid white;
+            border-radius: 50%;
+            transition: transform 0.05s ease-out;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+        }
+
+        #action-buttons {
+            position: absolute;
+            bottom: 40px;
+            right: 40px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .btn {
+            width: 75px;
+            height: 75px;
+            background: linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%);
+            border: 4px solid #333;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #c0c0c0;
+            backdrop-filter: blur(8px);
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.8), 0 8px 25px rgba(0, 0, 0, 0.6);
+            transition: transform 0.1s, background 0.2s, border-color 0.2s;
+            position: relative;
+            overflow: hidden;
+            cursor: pointer;
+        }
+
+        .btn::after {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(255, 255, 255, 0.02) 10px, rgba(255, 255, 255, 0.02) 20px);
+            pointer-events: none;
+        }
+
+        .btn:active {
+            background: #222;
+            transform: scale(0.9);
+            border-color: #555;
+            color: #fff;
+        }
+
+        .btn i { width: 32px; height: 32px; color: #c0c0c0; }
+        .btn:active i { color: #fff; }
+
+        #btn-accel { border-color: #2e4a2e; }
+        #btn-brake { border-color: #4a2e2e; }
+        #btn-light { border-color: #4a4a2e; }
+        #btn-fish { border-color: #2e2e4a; }
+
+        #hud {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .hud-item {
+            background: rgba(0, 0, 0, 0.4);
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+
+        #compass {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 60px;
+            height: 60px;
+            background: rgba(0, 0, 0, 0.4);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        #compass-needle {
+            width: 2px;
+            height: 40px;
+            background: linear-gradient(to bottom, red 50%, white 50%);
+        }
+
+        #fishing-modal {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.8);
+            padding: 20px;
+            border-radius: 15px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            text-align: center;
+            display: none;
+        }
+
+        #fullscreen-btn {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 12px;
+            cursor: pointer;
+            pointer-events: auto;
+            backdrop-filter: blur(4px);
+        }
+    </style>
+</head>
+<body>
+    <canvas id="game-canvas"></canvas>
+    
+    <div id="ui-layer">
+        <button id="fullscreen-btn">TELA CHEIA</button>
+
+        <div id="hud">
+            <div class="hud-item">Velocidade: <span id="speed-val">0</span> kn</div>
+            <div class="hud-item">Peixes: <span id="fish-count">0</span></div>
+        </div>
+
+        <div id="compass">
+            <div id="compass-needle"></div>
+        </div>
+
+        <div id="joystick-container" class="pointer-events-auto">
+            <div id="joystick-knob"></div>
+        </div>
+
+        <div id="action-buttons">
+            <div id="btn-accel" class="btn pointer-events-auto" title="Acelerar">
+                <i data-lucide="arrow-up"></i>
+            </div>
+            <div id="btn-brake" class="btn pointer-events-auto" title="Frear">
+                <i data-lucide="arrow-down"></i>
+            </div>
+            <div id="btn-light" class="btn pointer-events-auto" title="Farol">
+                <i data-lucide="sun"></i>
+            </div>
+            <div id="btn-fish" class="btn pointer-events-auto" title="Pescar">
+                <i data-lucide="anchor"></i>
+            </div>
+        </div>
+
+        <div id="fishing-modal">
+            <h3>Pescando...</h3>
+            <p>Aguarde uma fisgada!</p>
+            <div id="fish-result"></div>
+        </div>
+    </div>
+
+    <script>
+        // --- CONFIGURAÇÕES ---
+        const BOAT_CONFIG = {
+            maxSpeed: 25,
+            acceleration: 0.15,
+            deceleration: 0.05,
+            turnSpeed: 0.04
+        };
+
+        const WAVES = [
+            { direction: new THREE.Vector2(1, 1), steepness: 0.2, wavelength: 60 },
+            { direction: new THREE.Vector2(1, 0.6), steepness: 0.15, wavelength: 31 },
+            { direction: new THREE.Vector2(0.4, 1), steepness: 0.1, wavelength: 18 },
+        ];
+
+        // --- SHADERS DO OCEANO ---
+        const vertexShader = `
+            uniform float time;
+            varying vec3 vWorldPosition;
+            varying vec3 vNormal;
+            varying float vWaveHeight;
+            struct Wave { vec2 direction; float steepness; float wavelength; };
+            uniform Wave waves[3];
+            vec3 gerstnerWave(Wave wave, vec3 p, inout vec3 tangent, inout vec3 binormal) {
+                float k = 2.0 * 3.14159 / wave.wavelength;
+                float c = sqrt(9.8 / k);
+                vec2 d = normalize(wave.direction);
+                float f = k * (dot(d, p.xz) - c * time);
+                float a = wave.steepness / k;
+                tangent += vec3(-d.x * d.x * (wave.steepness * sin(f)), d.x * (wave.steepness * cos(f)), -d.x * d.y * (wave.steepness * sin(f)));
+                binormal += vec3(-d.x * d.y * (wave.steepness * sin(f)), d.y * (wave.steepness * cos(f)), -d.y * d.y * (wave.steepness * sin(f)));
+                return vec3(d.x * (a * cos(f)), a * sin(f), d.y * (a * cos(f)));
+            }
+            void main() {
+                vec3 p = position;
+                vec3 tangent = vec3(1,0,0); vec3 binormal = vec3(0,0,1); vec3 offset = vec3(0);
+                offset += gerstnerWave(waves[0], p, tangent, binormal);
+                offset += gerstnerWave(waves[1], p, tangent, binormal);
+                offset += gerstnerWave(waves[2], p, tangent, binormal);
+                vec3 worldPos = p + offset;
+                vNormal = normalize(cross(binormal, tangent));
+                vWorldPosition = worldPos;
+                vWaveHeight = offset.y;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(worldPos, 1.0);
+            }
+        `;
+
+        const fragmentShader = `
+            uniform vec3 waterColor; uniform vec3 deepWaterColor; uniform float time;
+            varying vec3 vWorldPosition; varying vec3 vNormal; varying float vWaveHeight;
+            void main() {
+                vec3 viewDir = normalize(cameraPosition - vWorldPosition);
+                float fresnel = pow(1.0 - max(dot(vNormal, viewDir), 0.0), 5.0);
+                float depth = clamp(vWaveHeight * 0.4 + 0.6, 0.0, 1.0);
+                vec3 baseColor = mix(deepWaterColor, waterColor, depth);
+                vec3 lightDir = normalize(vec3(0.5, 0.7, 0.2));
+                vec3 reflectDir = reflect(-lightDir, vNormal);
+                float spec = pow(max(dot(viewDir, reflectDir), 0.0), 128.0);
+                vec3 finalColor = mix(baseColor, vec3(0.5, 0.8, 0.9), fresnel * 0.5);
+                finalColor += spec * vec3(1.0, 0.9, 0.7) * 0.6;
+                gl_FragColor = vec4(finalColor, 1.0);
+            }
+        `;
+
+        // --- CLASSES DO JOGO ---
+        class Ocean {
+            constructor(scene) {
+                const geometry = new THREE.PlaneGeometry(3000, 3000, 128, 128);
+                geometry.rotateX(-Math.PI / 2);
+                this.material = new THREE.ShaderMaterial({
+                    uniforms: {
+                        time: { value: 0 },
+                        deepWaterColor: { value: new THREE.Color(0x001021) },
+                        waterColor: { value: new THREE.Color(0x005b7f) },
+                        waves: { value: WAVES }
+                    },
+                    vertexShader, fragmentShader
+                });
+                this.mesh = new THREE.Mesh(geometry, this.material);
+                scene.add(this.mesh);
+            }
+            update(time) { this.material.uniforms.time.value = time; }
+            getHeightAt(x, z, time) {
+                let h = 0;
+                for (const w of WAVES) {
+                    const k = 2.0 * Math.PI / w.wavelength;
+                    const c = Math.sqrt(9.8 / k);
+                    const d = w.direction.clone().normalize();
+                    const f = k * (d.x * x + d.y * z - c * time);
+                    h += (w.steepness / k) * Math.sin(f);
+                }
+                return h;
+            }
+        }
+
+        class Boat {
+            constructor(scene) {
+                this.mesh = new THREE.Group();
+                this.speed = 0; this.rotation = 0; this.lightOn = false;
+                const hull = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.2, 5.5), new THREE.MeshStandardMaterial({ color: 0x880000 }));
+                hull.position.y = 0.6;
+                const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.2, 2.2), new THREE.MeshStandardMaterial({ color: 0xeeeeee }));
+                cabin.position.set(0, 1.8, -0.6);
+                this.headlight = new THREE.SpotLight(0xffffff, 0, 100, Math.PI/4);
+                this.headlight.position.set(0, 2.2, 0.6);
+                this.headlight.target.position.set(0, 0, 10);
+                this.mesh.add(hull, cabin, this.headlight, this.headlight.target);
+                scene.add(this.mesh);
+            }
+            update(input, h, normal) {
+                if (input.accel) this.speed += BOAT_CONFIG.acceleration;
+                else if (input.brake) this.speed -= BOAT_CONFIG.acceleration;
+                else this.speed *= (1 - BOAT_CONFIG.deceleration);
+                this.speed = Math.max(-5, Math.min(this.speed, BOAT_CONFIG.maxSpeed));
+                this.rotation -= input.turn * BOAT_CONFIG.turnSpeed;
+                this.mesh.rotation.y = this.rotation;
+                const dir = new THREE.Vector3(0, 0, 1).applyAxisAngle(new THREE.Vector3(0, 1, 0), this.rotation);
+                this.mesh.position.add(dir.multiplyScalar(this.speed * 0.05));
+                this.mesh.position.y = THREE.MathUtils.lerp(this.mesh.position.y, h, 0.1);
+                const targetQ = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), normal);
+                this.mesh.quaternion.slerp(targetQ.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), this.rotation)), 0.1);
+                this.headlight.intensity = this.lightOn ? 100 : 0;
+            }
+        }
+
+        class World {
+            constructor(scene) {
+                this.islands = new THREE.Group(); this.birds = new THREE.Group(); this.islandData = [];
+                scene.add(this.islands, this.birds);
+                for (let i = 0; i < 15; i++) {
+                    const x = (Math.random() - 0.5) * 2000, z = (Math.random() - 0.5) * 2000;
+                    if (Math.sqrt(x*x + z*z) < 150) continue;
+                    const r = 25 + Math.random() * 40;
+                    const isl = new THREE.Mesh(new THREE.CylinderGeometry(r, r*1.2, 12, 12), new THREE.MeshStandardMaterial({ color: 0x1a4a1a }));
+                    isl.position.set(x, -2, z); this.islands.add(isl);
+                    this.islandData.push({ position: new THREE.Vector3(x, 0, z), radius: r });
+                    for(let j=0; j<3; j++) {
+                        const b = new THREE.Group();
+                        const w = new THREE.Mesh(new THREE.PlaneGeometry(1, 0.4), new THREE.MeshBasicMaterial({color:0xffffff, side:2}));
+                        b.add(w); b.scale.set(0.5,0.5,0.5);
+                        b.userData = { center: new THREE.Vector3(x, 15+Math.random()*10, z), radius: r+15, angle: Math.random()*Math.PI*2, speed: 0.02 };
+                        this.birds.add(b);
+                    }
+                }
+            }
+            update(time) {
+                this.birds.children.forEach(b => {
+                    b.userData.angle += b.userData.speed;
+                    b.position.x = b.userData.center.x + Math.cos(b.userData.angle) * b.userData.radius;
+                    b.position.z = b.userData.center.z + Math.sin(b.userData.angle) * b.userData.radius;
+                    b.lookAt(b.userData.center.x + Math.cos(b.userData.angle+0.1)*b.userData.radius, b.position.y, b.userData.center.z + Math.sin(b.userData.angle+0.1)*b.userData.radius);
+                });
+            }
+        }
+
+        // --- INICIALIZAÇÃO ---
+        class Game {
+            constructor() {
+                this.scene = new THREE.Scene();
+                this.camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 5000);
+                this.renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('game-canvas'), antialias: true });
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+                
+                this.scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+                this.sun = new THREE.DirectionalLight(0xffffff, 1); this.scene.add(this.sun);
+                this.sunMesh = new THREE.Mesh(new THREE.SphereGeometry(20), new THREE.MeshBasicMaterial({color:0xffffee}));
+                this.scene.add(this.sunMesh);
+
+                this.ocean = new Ocean(this.scene);
+                this.boat = new Boat(this.scene);
+                this.world = new World(this.scene);
+                this.clock = new THREE.Clock();
+                this.input = { accel: false, brake: false, turn: 0, fish: false };
+                
+                this.setupUI();
+                window.onresize = () => {
+                    this.camera.aspect = window.innerWidth/window.innerHeight;
+                    this.camera.updateProjectionMatrix();
+                    this.renderer.setSize(window.innerWidth, window.innerHeight);
+                };
+                this.animate();
+            }
+
+            setupUI() {
+                const btn = (id, start, end) => {
+                    const el = document.getElementById(id);
+                    el.onpointerdown = start; el.onpointerup = end; el.onpointerleave = end;
+                };
+                btn('btn-accel', () => this.input.accel = true, () => this.input.accel = false);
+                btn('btn-brake', () => this.input.brake = true, () => this.input.brake = false);
+                document.getElementById('btn-light').onclick = () => this.boat.lightOn = !this.boat.lightOn;
+                document.getElementById('btn-fish').onclick = () => {
+                    const modal = document.getElementById('fishing-modal');
+                    modal.style.display = 'block';
+                    setTimeout(() => modal.style.display = 'none', 1500);
+                };
+                document.getElementById('fullscreen-btn').onclick = () => {
+                    if (!document.fullscreenElement) document.documentElement.requestFullscreen();
+                    else document.exitFullscreen();
+                };
+
+                const joy = document.getElementById('joystick-container'), knob = document.getElementById('joystick-knob');
+                let dragging = false;
+                joy.onpointerdown = (e) => { dragging = true; };
+                window.onpointermove = (e) => {
+                    if (!dragging) return;
+                    const rect = joy.getBoundingClientRect();
+                    let dx = (e.clientX - (rect.left + rect.width/2)) / (rect.width/2);
+                    dx = Math.max(-1, Math.min(1, dx));
+                    this.input.turn = dx; knob.style.transform = `translate(${dx*40}px, 0)`;
+                };
+                window.onpointerup = () => { dragging = false; this.input.turn = 0; knob.style.transform = 'none'; };
+                lucide.createIcons();
+            }
+
+            animate() {
+                requestAnimationFrame(() => this.animate());
+                const elapsed = this.clock.getElapsedTime(), delta = this.clock.getDelta();
+                this.ocean.update(elapsed);
+                const bPos = this.boat.mesh.position;
+                const h = this.ocean.getHeightAt(bPos.x, bPos.z, elapsed);
+                const normal = new THREE.Vector3(h - this.ocean.getHeightAt(bPos.x+0.1, bPos.z, elapsed), 0.1, h - this.ocean.getHeightAt(bPos.x, bPos.z+0.1, elapsed)).normalize();
+                
+                this.boat.update(this.input, h, normal);
+                this.world.islandData.forEach(isl => {
+                    const d = bPos.distanceTo(isl.position);
+                    if (d < isl.radius + 3) {
+                        this.boat.mesh.position.add(bPos.clone().sub(isl.position).normalize().multiplyScalar(isl.radius + 3 - d));
+                        this.boat.speed *= 0.5;
+                    }
+                });
+
+                const camOff = new THREE.Vector3(0, 10, -20).applyAxisAngle(new THREE.Vector3(0, 1, 0), this.boat.rotation);
+                this.camera.position.lerp(bPos.clone().add(camOff), 0.1);
+                this.camera.lookAt(bPos);
+
+                const sunY = Math.sin(elapsed * 0.1);
+                this.sun.position.set(0, sunY * 500, Math.cos(elapsed * 0.1) * 500);
+                this.sunMesh.position.copy(this.sun.position);
+                this.scene.background = new THREE.Color(0x7fb2c9).lerp(new THREE.Color(0x050510), Math.max(0, -sunY));
+                
+                document.getElementById('speed-val').innerText = Math.abs(this.boat.speed).toFixed(1);
+                document.getElementById('compass-needle').style.transform = `rotate(${-this.boat.rotation}rad)`;
+                this.world.update(elapsed);
+                this.renderer.render(this.scene, this.camera);
+            }
+        }
+        window.onload = () => new Game();
+    </script>
+</body>
+</html>
